@@ -1,0 +1,13 @@
+# Keepalive and sensitive tokens
+*.log
+*.lock
+.keepalive.log
+.autoheal.lock
+*ngrok_token*
+*token.txt
+*token.json
+token.json
+*domain.txt
+__pycache__/
+node_modules/
+.env*

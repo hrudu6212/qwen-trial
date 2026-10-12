@@ -1,0 +1,33 @@
+name: Werewolf 24/7 Cloud Auto-Healer
+
+on:
+  schedule:
+    # Runs every 20 minutes in GitHub's cloud (completely independent of your laptop)
+    - cron: '*/20 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI anytime
+
+jobs:
+  auto-heal:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Google Colab CLI
+        run: |
+          pip install google-colab-cli
+
+      - name: Configure Colab Credentials
+        run: |
+          mkdir -p ~/.config/colab-cli
+          echo '${{ secrets.COLAB_TOKEN_JSON }}' > ~/.config/colab-cli/token.json
+          chmod 600 ~/.config/colab-cli/token.json
+
+      - name: Run Cloud Healer
+        run: |
+          python cloud_healer.py
