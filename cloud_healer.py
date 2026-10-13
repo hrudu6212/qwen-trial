@@ -10,6 +10,13 @@ import re
 T1 = "https://easiest-matchless-never.ngrok-free.dev/v1/models"
 T2 = "https://faculty-suspend-enjoyably.ngrok-free.dev/v1/models"
 
+REPO_OWNER = "hrudu6212"
+REPO_NAME = "qwen-trial"
+
+# Continuous run configuration
+MAX_RUN_SECONDS = 5 * 3600 - 300  # 4 hours 55 minutes
+CHECK_INTERVAL_SECONDS = 45       # Pulse every 45 seconds to defeat 15-min idle timeout
+
 def log(msg):
     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
 
@@ -59,9 +66,6 @@ def get_active_session():
     code, out, _ = run_cmd("colab sessions", timeout=60)
     if code != 0 or not out:
         return None
-    # Output format e.g.: [werewolfcpu] m-s-... | Hardware: CPU | Variant: DEFAULT
-    # or [werewolfgpu] ...
-    # Prefer werewolfgpu if present
     matches = re.findall(r'\[([a-zA-Z0-9_\-]+)\]', out)
     if not matches:
         return None
@@ -124,31 +128,113 @@ def resurrect():
     log("WARNING: Tunnels did not pass verification within timeout.")
     return False
 
-def main():
-    log("=== Werewolf 24/7 KeepAlive & Healer Check ===")
+def trigger_successor_workflow():
+    log("=== DISPATCHING SUCCESSOR WORKFLOW FOR UNBROKEN 24/7 CHAIN ===")
+    token = os.environ.get("GH_DISPATCH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not token:
+        log("No GH_DISPATCH_TOKEN or GITHUB_TOKEN found in environment. Skipping auto-dispatch.")
+        return False
     
-    if check_all_tunnels():
-        log("Endpoints healthy. Checking active session for keepalive pulse...")
-        session_name = get_active_session()
-        if session_name:
-            if send_pulse(session_name):
-                log(f"Pulse delivered successfully to session '{session_name}'. Colab kernel refreshed.")
-                sys.exit(0)
-            else:
-                log("Pulse failed! Session might be stale or disconnected. Proceeding to heal.")
-        else:
-            log("Endpoints healthy, but no colab session detected. Auto-watchdog might be running.")
+    repo = os.environ.get("GITHUB_REPOSITORY", f"{REPO_OWNER}/{REPO_NAME}")
+    url = f"https://api.github.com/repos/{repo}/actions/workflows/cloud_auto_heal.yml/dispatches"
+    
+    payload = json.dumps({"ref": "main"}).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "User-Agent": "WerewolfAutoChainer/1.0"
+        }
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            log(f"SUCCESS: Dispatched successor workflow (HTTP {resp.status})!")
+            return True
+    except Exception as e:
+        log(f"Failed to dispatch successor workflow: {e}")
+        return False
+
+def run_continuous_loop():
+    log(f"Starting continuous 24/7 keepalive relay loop for up to {MAX_RUN_SECONDS} seconds...")
+    start_time = time.time()
+    iteration = 0
+    consecutive_pulse_failures = 0
+    
+    while True:
+        elapsed = time.time() - start_time
+        remaining = MAX_RUN_SECONDS - elapsed
+        iteration += 1
+        
+        log(f"--- KeepAlive Tick #{iteration} (Elapsed: {int(elapsed)}s / Remaining: {int(remaining)}s) ---")
+        
+        # Check if approaching relay handover threshold (less than 2 minutes left)
+        if remaining <= 120:
+            log("Handover threshold reached! Spawning successor workflow relay...")
+            trigger_successor_workflow()
+            log("Successor runner dispatched. Sleeping 15s before clean exit...")
+            time.sleep(15)
+            log("Relay handoff complete. Terminating current runner.")
             sys.exit(0)
-    else:
-        log("Endpoints offline or incomplete. Proceeding to heal.")
+        
+        # Check health
+        healthy = check_all_tunnels()
+        
+        if healthy:
+            session_name = get_active_session()
+            if session_name:
+                log(f"Pulsing session '{session_name}' to defeat idle timeout...")
+                if send_pulse(session_name):
+                    log(f"Pulse delivered successfully to session '{session_name}'.")
+                    consecutive_pulse_failures = 0
+                else:
+                    consecutive_pulse_failures += 1
+                    log(f"Pulse warning: failed {consecutive_pulse_failures} time(s).")
+                    if consecutive_pulse_failures >= 3:
+                        log("3 consecutive pulse failures! Colab session may be unresponsive. Triggering heal...")
+                        resurrect()
+                        consecutive_pulse_failures = 0
+            else:
+                log("Tunnels responding but no active colab session found via CLI. Checking again next tick.")
+        else:
+            log("Endpoints offline or incomplete. Resurrecting system immediately...")
+            resurrect()
+            consecutive_pulse_failures = 0
+        
+        # Wait until next tick
+        time.sleep(CHECK_INTERVAL_SECONDS)
+
+def main():
+    log("=== Werewolf 24/7 Cloud Auto-Healer & KeepAlive Engine ===")
     
-    success = resurrect()
-    if success:
-        log("Auto-heal process completed successfully!")
-        sys.exit(0)
+    is_ci = os.environ.get("GITHUB_ACTIONS") == "true"
+    is_continuous_arg = "--continuous" in sys.argv or "-c" in sys.argv
+    
+    if is_ci or is_continuous_arg:
+        run_continuous_loop()
     else:
-        log("Auto-heal failed to restore all endpoints.")
-        sys.exit(1)
+        # One-off check mode for local diagnosis
+        log("Running single-pass diagnosis check...")
+        if check_all_tunnels():
+            log("Endpoints healthy. Checking active session for keepalive pulse...")
+            session_name = get_active_session()
+            if session_name:
+                if send_pulse(session_name):
+                    log(f"Pulse delivered successfully to session '{session_name}'. Colab kernel refreshed.")
+                    sys.exit(0)
+                else:
+                    log("Pulse failed! Session might be stale. Proceeding to heal.")
+            else:
+                log("Endpoints healthy, but no colab session detected.")
+                sys.exit(0)
+        else:
+            log("Endpoints offline or incomplete. Proceeding to heal.")
+        
+        success = resurrect()
+        sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
     main()
