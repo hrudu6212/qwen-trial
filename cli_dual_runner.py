@@ -67,12 +67,18 @@ if r_chk.returncode != 0:
 else:
     print("qwen2.5-coder:3b is cached!", flush=True)
 
-r_chk32 = subprocess.run("ollama list | grep 'qwen2.5-coder:32b-instruct-q2_K'", shell=True, capture_output=True)
-if r_chk32.returncode != 0:
-    print("Pulling qwen2.5-coder:32b-instruct-q2_K ...", flush=True)
-    run("ollama pull qwen2.5-coder:32b-instruct-q2_K", timeout=900)
+r_gpu = subprocess.run("which nvidia-smi && nvidia-smi", shell=True, capture_output=True)
+has_gpu = (r_gpu.returncode == 0)
+
+if has_gpu:
+    r_chk32 = subprocess.run("ollama list | grep 'qwen2.5-coder:32b-instruct-q2_K'", shell=True, capture_output=True)
+    if r_chk32.returncode != 0:
+        print("GPU detected! Pulling qwen2.5-coder:32b-instruct-q2_K ...", flush=True)
+        run("ollama pull qwen2.5-coder:32b-instruct-q2_K", timeout=900)
+    else:
+        print("qwen2.5-coder:32b-instruct-q2_K is cached!", flush=True)
 else:
-    print("qwen2.5-coder:32b-instruct-q2_K is cached!", flush=True)
+    print("CPU mode detected: skipping 32B pull to optimize CPU performance and memory.", flush=True)
 
 # 4. Create Modelfiles
 modelfile_sara = """FROM qwen2.5-coder:3b
@@ -99,7 +105,8 @@ When asked to build websites, web apps, or code, you produce complete, standalon
 with open("/tmp/Modelfile.sara", "w") as f:
     f.write(modelfile_sara)
 
-modelfile_midnight = """FROM qwen2.5-coder:32b-instruct-q2_K
+midnight_base = "qwen2.5-coder:32b-instruct-q2_K" if has_gpu else "qwen2.5-coder:3b"
+modelfile_midnight = f"""FROM {midnight_base}
 PARAMETER temperature 0.6
 PARAMETER top_p 0.95
 PARAMETER top_k 40
