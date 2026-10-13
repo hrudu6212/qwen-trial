@@ -2,8 +2,8 @@ name: Werewolf 24/7 Cloud Auto-Healer
 
 on:
   schedule:
-    # Runs every 20 minutes in GitHub's cloud (completely independent of your laptop)
-    - cron: '*/20 * * * *'
+    # Runs every 10 minutes in GitHub's cloud (completely independent of your laptop)
+    - cron: '*/10 * * * *'
   workflow_dispatch: # Allows manual trigger from GitHub UI anytime
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install Google Colab CLI
         run: |
