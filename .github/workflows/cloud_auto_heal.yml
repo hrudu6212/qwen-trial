@@ -2,8 +2,8 @@ name: Werewolf 24/7 Cloud Auto-Healer
 
 on:
   schedule:
-    # Backup trigger every 15 minutes
-    - cron: '*/15 * * * *'
+    # Backup trigger every 4 hours (fallback in case runner is interrupted)
+    - cron: '0 */4 * * *'
   push:
     branches:
       - main

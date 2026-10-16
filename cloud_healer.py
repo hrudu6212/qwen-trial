@@ -107,20 +107,63 @@ def check_all_tunnels():
     log(f"Health status: Sara={t1_sara}, Midnight32B={t1_mid}, Modak24B={t2_modak}")
     return (t1_sara and t1_mid and t2_modak)
 
+def adopt_server_sessions():
+    """
+    On ephemeral GitHub Actions runners, local sessions.json is empty.
+    Query Colab server assignments directly and register any active session locally
+    so 'colab exec' and 'colab sessions' work seamlessly without returning '?'.
+    """
+    try:
+        from colab_cli.common import state
+        from colab_cli.state import SessionState
+        assignments = state.client.list_assignments()
+        if not assignments:
+            return None
+        
+        local_sessions = state.store.list()
+        active_endpoint = assignments[0].endpoint
+        
+        # Check if already mapped to a friendly name
+        for s in local_sessions.values():
+            if s.endpoint == active_endpoint:
+                return s.name
+        
+        # Not yet mapped: register it
+        a = assignments[0]
+        acc_str = str(getattr(a, 'accelerator', '')).upper()
+        name = "werewolfgpu" if ("T4" in acc_str or "GPU" in acc_str or "A100" in acc_str) else "werewolfcpu"
+        
+        log(f"Adopting remote active Colab session '{a.endpoint}' as '{name}' ({a.accelerator})...")
+        sess = SessionState(
+            name=name,
+            endpoint=a.endpoint,
+            url=a.runtime_proxy_info.url,
+            token=a.runtime_proxy_info.token,
+            variant=getattr(a.variant, 'name', 'DEFAULT'),
+            accelerator=getattr(a.accelerator, 'value', str(a.accelerator))
+        )
+        state.store.add(sess)
+        return name
+    except Exception as e:
+        log(f"Warning: adopt_server_sessions error: {e}")
+        return None
+
 def get_active_session():
     ensure_fresh_colab_token()
+    adopted_name = adopt_server_sessions()
     code, out, _ = run_cmd("colab sessions", timeout=60)
-    if code != 0 or not out:
-        return None
-    raw_matches = re.findall(r'\[([a-zA-Z0-9_\-]+)\]', out)
-    valid_sessions = [m for m in raw_matches if m.lower() not in ('colab', 'warning', 'error', 'info', 'notice')]
-    if not valid_sessions:
-        return None
-    if "werewolfgpu" in valid_sessions:
-        return "werewolfgpu"
-    if "werewolfcpu" in valid_sessions:
-        return "werewolfcpu"
-    return valid_sessions[0]
+    if code == 0 and out:
+        raw_matches = re.findall(r'\[([a-zA-Z0-9_\-]+)\]', out)
+        valid_sessions = [m for m in raw_matches if m.lower() not in ('colab', 'warning', 'error', 'info', 'notice', '?')]
+        if "werewolfgpu" in valid_sessions:
+            return "werewolfgpu"
+        if "werewolfcpu" in valid_sessions:
+            return "werewolfcpu"
+        if valid_sessions:
+            return valid_sessions[0]
+    if adopted_name:
+        return adopted_name
+    return None
 
 def send_pulse(session_name):
     ensure_fresh_colab_token()
@@ -128,6 +171,11 @@ def send_pulse(session_name):
     if not os.path.exists(pulse_script):
         pulse_script = "pulse.py"
     code, out, err = run_cmd(f'colab exec -s {session_name} -f "{pulse_script}" --timeout 30', timeout=45)
+    if code != 0 and "not found" in (out + err):
+        log(f"Session '{session_name}' not found locally for pulse. Re-adopting server sessions...")
+        re_adopted = adopt_server_sessions()
+        target = re_adopted or session_name
+        code, out, err = run_cmd(f'colab exec -s {target} -f "{pulse_script}" --timeout 30', timeout=45)
     return code == 0
 
 def resurrect():
